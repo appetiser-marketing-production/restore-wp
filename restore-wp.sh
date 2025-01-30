@@ -168,17 +168,27 @@ esac
 
 # Create the database if it doesn't exist
 echo "Ensuring the database $db_name exists..."
-create_db_status=$(mysql -u "$db_user" -p"$db_pass" -e "CREATE DATABASE IF NOT EXISTS \`$db_name\`;" 2>&1)
+if sudo -u www-data bash -c "mysql -u'$db_user' -p'$(echo "$db_pass")' -e \"CREATE DATABASE IF NOT EXISTS \\\`$db_name\\\`;\" 2>/dev/null"; then
+  create_db_status="success"
+else
+  create_db_status="failure"
+fi
 
-# Check creation status using case statement
-case "$?" in
-  0)
+# Check database creation status using case statement
+case "$create_db_status" in
+  "success")
     msg="Database $db_name successfully created or already exists."
     echo "$msg"
     log_action "DONE" "$msg"
     ;;
+  "failure")
+    errormsg="Error: Failed to create database $db_name."
+    echo "$errormsg"
+    log_action "ERROR" "$errormsg"
+    exit 1
+    ;;
   *)
-    errormsg="Error: Failed to create database $db_name. Details: $create_db_status"
+    errormsg="Unexpected error: Database creation status unknown."
     echo "$errormsg"
     log_action "ERROR" "$errormsg"
     exit 1
