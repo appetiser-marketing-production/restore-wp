@@ -1,51 +1,70 @@
-# Restore WordPress Site Script (`restore-wp`)
+# 🛠️ WordPress Restore Script (`restore-wp.sh`)
 
-## Introduction
-
-The `restore-wp` script is designed to restore a WordPress site from a backup archive created by the `backup-wp` script. This script automates the restoration of WordPress files and the database, ensuring that your website is fully functional after the process. It includes robust logging and error handling for a seamless restore experience.
+This script restores a WordPress site from a backup archive created by the `backup-wp.sh` script. It automates restoring site files and the database, with safety checks and logging for reliable recovery.
 
 ---
 
-## Prerequisites
+## 📝 Version Information
+- **Version:** 1.1.0
+- **Author:** Landing Page Team
+- **Author URI:** [https://appetiser.com.au/](https://appetiser.com.au/)
 
-Before using the script, ensure the following requirements are met:
+### 🎉 What's New in Version 1.1.0
+- 🔧 **Configuration file support (`restore-wp.conf`)** for unattended runs.
+- 💣 **Full database drop option** via `DROP_DATABASE_IF_EXISTS` setting (`yes`, `no`, `ask`).
+- ⚠️ **WordPress installation overwrite check** via `OVERWRITE_EXISTING_WP` setting.
+- 🧹 **Automatic cleanup of the database dump file** after restore.
+- 🎨 Improved logging, feedback, and user prompts.
 
-1. **WP-CLI Installed**:
-   - WP-CLI must be installed and available in your system's PATH.
+---
+
+## 🔧 Prerequisites
+Before running the script, ensure:
+1. **WP-CLI installed**  
    - [WP-CLI Installation Instructions](https://wp-cli.org/#installing)
 
-2. **Backup File**:
-   - A `.tar.gz` backup archive created using the `backup-wp` script, containing the WordPress site files and `wordpress.sql` database dump.
+2. **Proper permissions**  
+   - The script uses `www-data` for file and database operations.  
+   - Ensure the user running the script has `sudo` privileges.
 
-3. **Permissions**:
-   - Ensure you have proper permissions to access the restore folder and manipulate the database.
-   - The script should be executed as a user with `sudo` privileges or as the user who owns the WordPress files.
+3. **Backup file**  
+   - Must be a `.tar.gz` archive created by `backup-wp.sh`.
 
----
-
-## Steps Performed by the Script
-
-The script performs the following actions:
-
-1. **Input Validation**:
-   - Verifies the existence and readability of the specified backup file.
-   - Checks the restore folder's existence or creates it if necessary.
-
-2. **Extract Backup Archive**:
-   - Decompresses the `.tar.gz` archive into the specified restore folder.
-
-3. **Database Restoration**:
-   - Locates the `wordpress.sql` file in the extracted backup.
-   - Uses WP-CLI to import the database dump into the WordPress database.
-
-4. **Logging**:
-   - Logs all actions and errors to a file in `/var/log` for auditing and troubleshooting.
+4. **Logging directory**  
+   - Logs are saved to `/var/log/`.
 
 ---
 
-## Usage
+## 🛠️ What the Script Does
+1. ✅ Validates and loads values from `restore-wp.conf` or prompts if missing.
+2. 📦 Verifies the backup file and restore folder.
+3. ⚠️ Detects existing WordPress installations and prompts or acts based on config.
+4. 📤 Extracts the backup archive (silently).
+5. 🔑 Extracts database credentials from `wp-config.php`.
+6. 💣 Drops the existing database if configured or confirmed.
+7. 🏗️ Creates the database if missing.
+8. 📥 Imports the `wordpress.sql` database dump.
+9. 🧹 Removes the database dump after import.
+10. 🔧 Resets permissions on restored files.
+11. 📜 Logs all actions.
 
-### Command-Line Arguments:
+---
+
+## ⚙️ Configuration File (`restore-wp.conf`)
+
+Create `restore-wp.conf` in the same directory as `restore-wp.sh` to automate values:
 
 ```bash
-./restore-wp <backup_file> <restore_folder>
+# Path to the backup file
+BACKUP_FILE="/home/user/backups/site_backup.tar.gz"
+
+# Path to restore folder
+RESTORE_FOLDER="/var/www/html"
+
+# Overwrite existing WordPress installation
+# Options: yes, no, ask
+OVERWRITE_EXISTING_WP="ask"
+
+# Drop existing database
+# Options: yes, no, ask
+DROP_DATABASE_IF_EXISTS="ask"

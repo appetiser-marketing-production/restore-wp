@@ -1,10 +1,21 @@
 #!/bin/bash
 
-# Restore script for staging site
-echo "Usage: $0 <backup-file> <restore-folder>"
-echo "This script will restore the WordPress site files and database from a specified backup file."
+# Restore script for staging site with config support, better notifications, WordPress overwrite check, and optional full database drop
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+CONFIG_FILE="$SCRIPT_DIR/restore-wp.conf"
 
 LOGFILE="/var/log/restore-wp_$(whoami)_$(date +'%Y%m%d_%H%M%S').log"
+
+echo "🔄 WordPress Restore Script"
+echo "This script will restore your WordPress site from a backup."
+
+if [[ -f "$CONFIG_FILE" ]]; then
+    echo "🔹 Using configuration file: $CONFIG_FILE"
+    source "$CONFIG_FILE"
+else
+    echo "⚠️ No configuration file found. You can create '$CONFIG_FILE' to automate input values."
+fi
 
 log_action() {
   local result=$?
@@ -14,277 +25,139 @@ log_action() {
   return $result
 }
 
-# Function to check if a variable is blank
 check_blank() {
   local value="$1"
   local var_name="$2"
 
-  case "$value" in
-    "")
-      echo "Error: $var_name cannot be blank. Please provide a valid $var_name."
-      log_action "Error" "$var_name cannot be blank. Please provide a valid $var_name."
-      exit 1
-      ;;
-    *)
-      echo "$var_name is set to: $value"
-      ;;
-  esac
+  if [[ -z "$value" ]]; then
+    echo "❌ Error: $var_name cannot be blank."
+    log_action "Error" "$var_name cannot be blank."
+    exit 1
+  else
+    echo "✅ $var_name is set to: $value"
+  fi
 }
 
-# Check if wp-cli is installed
 if ! which wp > /dev/null; then
-  errormsg="WP CLI could not be found. Please install WP-CLI before running this script."
+  errormsg="❌ WP CLI could not be found. Please install WP-CLI before running this script."
   echo "$errormsg"
-  echo "For installation instructions, visit: https://wp-cli.org/#installing"
+  echo "ℹ️ For installation instructions, visit: https://wp-cli.org/#installing"
   log_action "ERROR" "$errormsg"
   exit 1
 fi
 
-# Backup file and restore folder
-backup_file=${1:-$(read -p "Enter the backup file path: " tmp && echo "$tmp")}
-# Check for blanks
+backup_file="${BACKUP_FILE:-}"
+if [[ -z "$backup_file" ]]; then
+  read -p "📄 Enter the backup file path: " backup_file
+fi
 check_blank "$backup_file" "Backup file path"
 
-# Check if backup file exists
-case "$(test -f "$backup_file" && echo "exists" || echo "not_exists")" in
-  "exists")
-    echo "Backup file $backup_file exists."
-    log_action "CHECK" "Backup file is accessible"
-    ;;
-  "not_exists")
-    errormsg="Error: Backup file $backup_file does not exist."
-    echo "$errormsg"
-    log_action "ERROR" "$errormsg"
-    exit 1
-    ;;
-  *)
-    errormsg="Unexpected error occurred while checking the backup file."
-    echo "$errormsg"
-    log_action "ERROR" "$errormsg"
-    exit 1
-    ;;
-esac
-
-restore_folder=${2:-$(read -p "Enter the restore folder path: " tmp && echo "$tmp")}
+restore_folder="${RESTORE_FOLDER:-}"
+if [[ -z "$restore_folder" ]]; then
+  read -p "📂 Enter the restore folder path: " restore_folder
+fi
 check_blank "$restore_folder" "Restore folder path"
 
+if [[ ! -f "$backup_file" ]]; then
+  echo "❌ Backup file $backup_file does not exist."
+  log_action "ERROR" "Backup file does not exist."
+  exit 1
+fi
+echo "📦 Backup file $backup_file exists."
+log_action "CHECK" "Backup file is accessible"
 
-# Check if restore folder exists, create if not
-case "$(test -d "$restore_folder" && echo "exists" || echo "not_exists")" in
-  "exists")
-    echo "Restore folder $restore_folder exists."
-    log_action "CHECK" "Restore folder is accessible"
-    ;;
-  "not_exists")
-    echo "Restore folder $restore_folder does not exist. Creating it..."
-    mkdir -p "$restore_folder" && sudo chown -R www-data:www-data "$restore_folder" && log_action "INFO" "Restore folder $restore_folder created and owned by www-data." || {
-      errormsg="Error: Failed to create or set ownership for restore folder $restore_folder."
-      echo "$errormsg"
-      log_action "ERROR" "$errormsg"
-      exit 1
-    }
-    ;;
-  *)
-    errormsg="Unexpected error occurred while checking the restore folder."
-    echo "$errormsg"
-    log_action "ERROR" "$errormsg"
+if [[ ! -d "$restore_folder" ]]; then
+  echo "📁 Restore folder $restore_folder does not exist. Creating it..."
+  mkdir -p "$restore_folder" && sudo chown -R www-data:www-data "$restore_folder" || {
+    echo "❌ Failed to create restore folder."
+    log_action "ERROR" "Failed to create restore folder."
     exit 1
-    ;;
-esac
+  }
+fi
+echo "📂 Restore folder $restore_folder is ready."
 
-# Extract backup file
-echo "Extracting backup file..."
-extract_status=$(sudo -u www-data tar --strip-components=1 -xzvf "$backup_file" -C "$restore_folder" > /dev/null 2>&1 && echo "success" || echo "failure")
-
-case "$extract_status" in
-  "success")
-    msg="Backup file successfully extracted to $restore_folder."
-    echo "$msg"
-    log_action "DONE" "$msg"
-    ;;
-  "failure")
-    errormsg="Error: Failed to extract backup file $backup_file."
-    echo "$errormsg"
-    log_action "ERROR" "$errormsg"
-    exit 1
-    ;;
-  *)
-    errormsg="Unexpected error occurred during extraction."
-    echo "$errormsg"
-    log_action "ERROR" "$errormsg"
-    exit 1
-    ;;
-esac
-
-# Navigate to the restore folder
-cd "$restore_folder" || {
-      errormsg="Error: Failed to navigate to restore folder $restore_folder."
-      echo "$errormsg"
-      log_action "ERROR" "$errormsg"
-      exit 1
-    }
-errormsg="Successfully navigated to restore folder $restore_folder."
-echo "$errormsg"
-log_action "Success:" "$errormsg"
-
-# Extract database credentials from wp-config.php
-db_name=$(grep "DB_NAME" "$restore_folder/wp-config.php" | cut -d \' -f 4)
-db_user=$(grep "DB_USER" "$restore_folder/wp-config.php" | cut -d \' -f 4)
-db_pass=$(grep "DB_PASSWORD" "$restore_folder/wp-config.php" | cut -d \' -f 4)
-
-# Validate extraction using case statements
-case "$db_name" in
-  "")
-    echo "Error: Could not extract database name from wp-config.php."
-    log_action "ERROR" "Could not extract database name from wp-config.php."
-    exit 1
-    ;;
-  *)
-    echo "Database name: $db_name"
-    ;;
-esac
-
-case "$db_user" in
-  "")
-    echo "Error: Could not extract database user from wp-config.php."
-    log_action "ERROR" "Could not extract database user from wp-config.php."
-    exit 1
-    ;;
-  *)
-    echo "Database user: $db_user"
-    ;;
-esac
-
-case "$db_pass" in
-  "")
-    echo "Error: Could not extract database password from wp-config.php."
-    log_action "ERROR" "Could not extract database password from wp-config.php."
-    exit 1
-    ;;
-  *)
-    echo "Database password extracted successfully."
-    ;;
-esac
-
-# Create the database if it doesn't exist
-echo "Ensuring the database $db_name exists..."
-if sudo -u www-data bash -c "mysql -u'$db_user' -p'$(echo "$db_pass")' -e \"CREATE DATABASE IF NOT EXISTS \\\`$db_name\\\`;\" 2>/dev/null"; then
-  create_db_status="success"
-else
-  create_db_status="failure"
+if [[ -f "$restore_folder/wp-config.php" ]]; then
+  echo "⚠️ Existing WordPress installation detected."
+  overwrite_setting="${OVERWRITE_EXISTING_WP:-ask}"
+  case "$overwrite_setting" in
+    "yes") echo "🔁 Overwriting existing installation." ;;
+    "no") echo "❌ Restore aborted."; exit 1 ;;
+    "ask"|"")
+      read -p "❓ Overwrite existing WordPress installation? (yes/no): " confirm
+      [[ "$confirm" != "yes" ]] && echo "❌ Restore aborted." && exit 1
+      ;;
+    *) echo "❌ Invalid OVERWRITE_EXISTING_WP value."; exit 1 ;;
+  esac
 fi
 
-# Check database creation status using case statement
-case "$create_db_status" in
-  "success")
-    msg="Database $db_name successfully created or already exists."
-    echo "$msg"
-    log_action "DONE" "$msg"
-    ;;
-  "failure")
-    errormsg="Error: Failed to create database $db_name."
-    echo "$errormsg"
-    log_action "ERROR" "$errormsg"
-    exit 1
-    ;;
-  *)
-    errormsg="Unexpected error: Database creation status unknown."
-    echo "$errormsg"
-    log_action "ERROR" "$errormsg"
-    exit 1
-    ;;
-esac
+echo "📤 Extracting backup..."
+sudo -u www-data tar --strip-components=1 -xzf "$backup_file" -C "$restore_folder" || {
+  echo "❌ Failed to extract backup."
+  log_action "ERROR" "Backup extraction failed."
+  exit 1
+}
+echo "✅ Extraction complete."
 
-# Restore database
-db_file="$restore_folder/wordpress.sql"
+cd "$restore_folder" || { echo "❌ Cannot access restore folder."; exit 1; }
 
-case "$(test -f "$db_file" && echo "exists" || echo "not_exists")" in
-  "exists")
-    msg="Database dump file $db_file exists. Restoring database..."
-    echo "$msg"
-    log_action "Check" "$msg"
+if [[ ! -f "wp-config.php" ]]; then
+  echo "❌ wp-config.php missing."
+  log_action "ERROR" "wp-config.php missing."
+  exit 1
+fi
 
-    # Capture output of the command for logging
-    restore_output=$(sudo -u www-data wp db import "$db_file" 2>&1)
-    restore_status=$?
+db_name=$(grep "DB_NAME" wp-config.php | awk -F", '" '{print $2}' | awk -F"'" '{print $1}')
+db_user=$(grep "DB_USER" wp-config.php | awk -F", '" '{print $2}' | awk -F"'" '{print $1}')
+db_pass=$(grep "DB_PASSWORD" wp-config.php | awk -F", '" '{print $2}' | awk -F"'" '{print $1}')
 
-    if [ $restore_status -eq 0 ]; then
-      msg="Database successfully restored from $db_file."
-      echo "$msg"
-      log_action "DONE" "$msg"
-    else
-      errormsg="Error: Failed to restore database from $db_file. Details: $restore_output"
-      echo "$errormsg"
-      log_action "ERROR" "$errormsg"
-      exit 1
-    fi
-    ;;
-  "not_exists")
-    errormsg="Database dump file $db_file does not exist in the extracted backup."
-    echo "$errormsg"
-    log_action "ERROR" "$errormsg"
-    exit 1
-    ;;
-  *)
-    errormsg="Unexpected error occurred while checking the database dump file."
-    echo "$errormsg"
-    log_action "ERROR" "$errormsg"
-    exit 1
-    ;;
-esac
+check_blank "$db_name" "Database name"
+check_blank "$db_user" "Database user"
+check_blank "$db_pass" "Database password"
 
-# Cleanup database dump file
-case "$(test -f "$db_file" && echo "exists" || echo "not_exists")" in
-  "exists")
-    echo "Cleaning up database dump file: $db_file"
-    rm -f "$db_file"
-    case "$?" in
-      0)
-        msg="Database dump file $db_file successfully removed."
-        echo "$msg"
-        log_action "DONE" "$msg"
-        ;;
-      *)
-        errormsg="Error: Failed to remove database dump file $db_file."
-        echo "$errormsg"
-        log_action "ERROR" "$errormsg"
-        ;;
-    esac
-    ;;
-  "not_exists")
-    echo "Database dump file $db_file does not exist, no cleanup needed."
-    log_action "INFO" "Database dump file $db_file does not exist, no cleanup needed."
-    ;;
-  *)
-    errormsg="Unexpected error while checking database dump file $db_file."
-    echo "$errormsg"
-    log_action "ERROR" "$errormsg"
-    ;;
-esac
+drop_db_setting="${DROP_DATABASE_IF_EXISTS:-ask}"
+if sudo -u www-data mysql -u"$db_user" -p"$db_pass" -e "USE \`$db_name\`;" 2>/dev/null; then
+  case "$drop_db_setting" in
+    "yes") echo "💣 Dropping $db_name...";;
+    "no") echo "❌ Not dropping database."; drop_db_setting="no";;
+    "ask"|"")
+      read -p "❓ Drop existing database $db_name? (yes/no): " confirm
+      [[ "$confirm" != "yes" ]] && echo "❌ Not dropping database." && drop_db_setting="no"
+      ;;
+    *) echo "❌ Invalid DROP_DATABASE_IF_EXISTS value."; exit 1 ;;
+  esac
 
-# Set permissions
-echo "Setting permissions for the restored files..."
-chmod_status=$(sudo chmod -R 755 "$restore_folder" && sudo chown -R www-data:www-data "$restore_folder" && echo "success" || echo "failure")
+  if [[ "$drop_db_setting" == "yes" ]]; then
+    sudo -u www-data mysql -u"$db_user" -p"$db_pass" -e "DROP DATABASE \`$db_name\`;"
+    sudo -u www-data mysql -u"$db_user" -p"$db_pass" -e "CREATE DATABASE \`$db_name\`;"
+    echo "✅ Database $db_name dropped and recreated."
+  fi
+else
+  sudo -u www-data mysql -u"$db_user" -p"$db_pass" -e "CREATE DATABASE \`$db_name\`;"
+  echo "✅ Database $db_name created."
+fi
 
-case "$chmod_status" in
-  "success")
-    msg="Permissions set successfully for $restore_folder."
-    echo "$msg"
-    log_action "DONE" "$msg"
-    ;;
-  "failure")
-    errormsg="Error: Failed to set permissions for $restore_folder."
-    echo "$errormsg"
-    log_action "ERROR" "$errormsg"
-    exit 1
-    ;;
-  *)
-    errormsg="Unexpected error occurred while setting permissions."
-    echo "$errormsg"
-    log_action "ERROR" "$errormsg"
-    exit 1
-    ;;
-esac
+db_file="wordpress.sql"
+if [[ -f "$db_file" ]]; then
+  echo "📥 Restoring database..."
+  sudo -u www-data wp db import "$db_file" || { echo "❌ Database restore failed."; exit 1; }
+  sudo -u www-data rm -f "$db_file"
+  if [[ -f "$db_file" ]]; then
+    echo "❌ Failed to remove database dump file: $db_file."
+    log_action "ERROR" "Failed to remove database dump file."
+  else
+    echo "🧹 Removed database dump file: $db_file."
+    log_action "DONE" "Database dump file removed."
+  fi
+else
+  echo "❌ Database dump not found."
+  exit 1
+fi
 
-echo "Restore complete. Files restored to $restore_folder and database imported."
-echo "Log file created at: $LOGFILE"
+echo "🔧 Setting permissions..."
+sudo chmod -R 755 "$restore_folder"
+sudo chown -R www-data:www-data "$restore_folder"
+
+echo "🎉 Restore complete!"
+echo "✅ Files in $restore_folder"
+echo "✅ Database imported."
+echo "📜 Log: $LOGFILE"
