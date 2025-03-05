@@ -5,9 +5,21 @@ This script restores a WordPress site from a backup archive created by the `back
 ---
 
 ## 📝 Version Information
-- **Version:** 1.1.0
+- **Version:** 1.2.0
 - **Author:** Landing Page Team
 - **Author URI:** [https://appetiser.com.au/](https://appetiser.com.au/)
+
+### 🎉 What's New in Version 1.2.0
+- 🔄 **Search and Replace feature** after database import.
+  - Configurable via `restore-wp.conf` with:
+    ```bash
+    RUN_SEARCH_REPLACE="yes"
+    SEARCH_STRING="https://appetiser.com.au"
+    REPLACE_STRING="https://dev.appetiser.com.au"
+    ```
+  - Supports automatic or prompted execution for replacing URLs or strings during restores.
+- 📝 **Prompts added** for missing `RUN_SEARCH_REPLACE`, `SEARCH_STRING`, and `REPLACE_STRING` if not set in config.
+- 🔧 All previous improvements from v1.1.0 remain.
 
 ### 🎉 What's New in Version 1.1.0
 - 🔧 **Configuration file support (`restore-wp.conf`)** for unattended runs.
@@ -44,9 +56,10 @@ Before running the script, ensure:
 6. 💣 Drops the existing database if configured or confirmed.
 7. 🏗️ Creates the database if missing.
 8. 📥 Imports the `wordpress.sql` database dump.
-9. 🧹 Removes the database dump after import.
-10. 🔧 Resets permissions on restored files.
-11. 📜 Logs all actions.
+9. 🔄 (Optional) Runs a search and replace on the restored database to update URLs or strings.
+10. 🧹 Removes the database dump after import.
+11. 🔧 Resets permissions on restored files.
+12. 📜 Logs all actions.
 
 ---
 
@@ -68,3 +81,13 @@ OVERWRITE_EXISTING_WP="ask"
 # Drop existing database
 # Options: yes, no, ask
 DROP_DATABASE_IF_EXISTS="ask"
+
+# Run search and replace after restore
+# Options: yes, no, ask
+RUN_SEARCH_REPLACE="ask"
+
+# What to search for (only if RUN_SEARCH_REPLACE is yes or ask)
+SEARCH_STRING="https://appetiser.com.au"
+
+# What to replace it with (only if RUN_SEARCH_REPLACE is yes or ask)
+REPLACE_STRING="https://dev.appetiser.com.au"

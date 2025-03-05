@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Restore script for staging site with config support, better notifications, WordPress overwrite check, and optional full database drop
-
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 CONFIG_FILE="$SCRIPT_DIR/restore-wp.conf"
 
@@ -141,16 +139,25 @@ if [[ -f "$db_file" ]]; then
   echo "📥 Restoring database..."
   sudo -u www-data wp db import "$db_file" || { echo "❌ Database restore failed."; exit 1; }
   sudo -u www-data rm -f "$db_file"
-  if [[ -f "$db_file" ]]; then
-    echo "❌ Failed to remove database dump file: $db_file."
-    log_action "ERROR" "Failed to remove database dump file."
-  else
-    echo "🧹 Removed database dump file: $db_file."
-    log_action "DONE" "Database dump file removed."
-  fi
+  echo "🧹 Removed database dump file: $db_file."
 else
   echo "❌ Database dump not found."
   exit 1
+fi
+
+# Handle search and replace prompts
+if [[ -z "$RUN_SEARCH_REPLACE" ]]; then
+  read -p "❓ Run search and replace on the database? (yes/no/ask): " RUN_SEARCH_REPLACE
+fi
+
+if [[ "$RUN_SEARCH_REPLACE" == "ask" ]]; then
+  read -p "🔍 Enter search string (e.g., https://appetiser.com.au): " SEARCH_STRING
+  read -p "🔄 Enter replace string (e.g., https://dev.appetiser.com.au): " REPLACE_STRING
+fi
+
+if [[ "$RUN_SEARCH_REPLACE" == "yes" ]]; then
+  sudo -u www-data wp search-replace "$SEARCH_STRING" "$REPLACE_STRING" --skip-columns=guid
+  echo "✅ Search and replace completed."
 fi
 
 echo "🔧 Setting permissions..."
@@ -158,6 +165,4 @@ sudo chmod -R 755 "$restore_folder"
 sudo chown -R www-data:www-data "$restore_folder"
 
 echo "🎉 Restore complete!"
-echo "✅ Files in $restore_folder"
-echo "✅ Database imported."
 echo "📜 Log: $LOGFILE"
