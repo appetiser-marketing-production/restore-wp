@@ -9,7 +9,11 @@ This script restores a WordPress site from a backup archive created by the `back
 - **Author:** Landing Page Team
 - **Author URI:** [https://appetiser.com.au/](https://appetiser.com.au/)
 
-### 🎉 What's New in Version 1.2.0
+🔄 Changes in Version 1.2.1
+🔧 configuration file adjustment. it is now available for prompt if you want to use another other than the default
+🔒 Added dbname and table prefix updates.
+
+🔄 Changes in Version 1.2.0
 - 🔄 **Search and Replace feature** after database import.
   - Configurable via `restore-wp.conf` with:
     ```bash
@@ -21,7 +25,7 @@ This script restores a WordPress site from a backup archive created by the `back
 - 📝 **Prompts added** for missing `RUN_SEARCH_REPLACE`, `SEARCH_STRING`, and `REPLACE_STRING` if not set in config.
 - 🔧 All previous improvements from v1.1.0 remain.
 
-### 🎉 What's New in Version 1.1.0
+🔄 Changes in Version 1.1.0
 - 🔧 **Configuration file support (`restore-wp.conf`)** for unattended runs.
 - 💣 **Full database drop option** via `DROP_DATABASE_IF_EXISTS` setting (`yes`, `no`, `ask`).
 - ⚠️ **WordPress installation overwrite check** via `OVERWRITE_EXISTING_WP` setting.
